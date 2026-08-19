@@ -52,24 +52,7 @@ if [ -f "$Q" ]; then
   [ "$left" -eq 0 ] || { echo "FATAL: Firebase references remain"; exit 1; }
 fi
 
-# 7. OPTIONAL (OPCN_FIX_INSET_PADDING=1): remove the double inset that leaves a
-#    black bar above the navigation buttons. setupEdgeToEdge() pads the content
-#    view by the system-bar insets, while the SAME insets and navBarHeight are
-#    also handed to the native layer (getDisplayMetrics), which lays out around
-#    them itself -- so the nav bar height is reserved twice and the window
-#    background shows through. Removing the padding keeps edge-to-edge and lets
-#    the native side do the insetting. m_insets must keep being assigned by the
-#    listener: the metrics string dereferences it, so dropping the listener
-#    entirely would NPE at startup.
-if [ "${OPCN_FIX_INSET_PADDING:-0}" = "1" ] && [ -f "$Q" ]; then
-  sed -i "s|^\( *\)v\.setPadding(m_insets\.left, m_insets\.top, m_insets\.right, m_insets\.bottom);|\1// v.setPadding(...) removed: native layer already applies these insets|" "$Q"
-  if grep -q "v.setPadding(m_insets" "$Q"; then
-    echo "FATAL: inset padding line not patched"; exit 1
-  fi
-  echo ">>> Removed duplicate inset padding (OPCN_FIX_INSET_PADDING)"
-fi
-
-# 8. The materialfilemanager module's night theme extends
+# 7. The materialfilemanager module's night theme extends
 #    Theme.MaterialComponents.DayNight.DarkActionBar and uses Material attrs
 #    (colorPrimaryVariant, colorOnPrimary), but the module only depends on the
 #    pre-AndroidX support library. Debug builds never notice; release runs
@@ -84,7 +67,7 @@ if [ -f "$M" ] && ! grep -q 'com.google.android.material:material' "$M"; then
     || { echo "FATAL: could not add Material dependency"; exit 1; }
 fi
 
-# 9. DEFAULT ON (OPCN_FIX_STATUSBAR_DOUBLE=0 disables): the status bar height is
+# 8. DEFAULT ON (OPCN_FIX_STATUSBAR_DOUBLE=0 disables): the status bar height is
 #    subtracted twice outside fullscreen mode. getDisplayMetrics sends
 #    "height - statusBarHeight", but outside m_fullScreen `height` comes from
 #    dm.heightPixels, which ALREADY excludes the status bar. The m_fullScreen
