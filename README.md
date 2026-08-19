@@ -20,10 +20,11 @@ Verified in the built APK: both `libgorp.so` cores (22.4 MB armv7a / 26.3 MB
 arm64, stripped), all 8 plugin binaries (4 plugins x 2 ABIs), the Qt5 runtime
 libraries, and 475 UI asset entries.
 
-**Still NOT verified: that the app runs correctly on a device.** It was never
-installed or launched -- there is no device or emulator in the build
-environment. A clean build and a valid package are not the same as a working
-chart plotter.
+**Verified on hardware**: both the debug and the signed release build install
+and run on Android 13 (/e/OS).
+
+One open defect: a **black bar between the app and the navigation buttons**.
+See "Known gaps" -- one hypothesis was tested and rejected.
 
 ## Requirements
 
@@ -61,6 +62,18 @@ prerequisite comes from GitHub.
     OPCN_ROOT=~/opcn-build OPCN_OFFLINE_DEPS=1 ./build.sh
 
 Or one stage at a time — `scripts/01-toolchain.sh` … `scripts/05-apk.sh`.
+
+For a signed, non-debuggable build:
+
+    scripts/06-release.sh
+
+It generates a keystore on first run (at `$OPCN_ROOT/opencpn-release.jks`, with
+the password beside it) or uses `OPCN_KEYSTORE` / `OPCN_KS_PASS` / `OPCN_KS_ALIAS`.
+**Back that keystore up and keep it out of git.** Android ties updates to the
+signing key: build with a different key and the APK will not install as an
+update, only as an uninstall-and-reinstall, losing routes, waypoints and
+settings. The script verifies the signature, the alignment, and that the result
+is genuinely not debuggable, rather than assuming any of the three.
 Configuration and pinned versions live in `scripts/env.sh`.
 
 ## Pinned versions
@@ -135,7 +148,14 @@ Found while getting the build to pass; all are handled automatically.
    this produces an APK with no toolbar icons and no `styles.xml` rather than a
    build failure -- it looks like a clean build.
 
-4. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
+4. **The release build is broken as shipped.** `materialfilemanager`'s
+   night theme extends `Theme.MaterialComponents.DayNight.DarkActionBar` and
+   uses Material attrs, but the module depends only on the pre-AndroidX support
+   library. Debug builds never notice; release runs `verifyReleaseResources`,
+   fails resource linking, and no release APK can be produced. Fixed by adding
+   the Material Components dependency the app module already uses.
+
+5. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
    run's entry data: after stripping, the rebuilt APK still measured 217 MB
    while containing only 81 MB of live entries. Valid (a zip is read from its
    trailing central directory) but 136 MB of waste. `05-apk.sh` therefore runs
@@ -154,8 +174,22 @@ Found while getting the build to pass; all are handled automatically.
   sources"; it will not upgrade a Play Store install in place.
 - **Native libraries are stripped** by default, which is what brings the APK
   from 217 MB to 82 MB. Use `OPCN_KEEP_SYMBOLS=1` when debugging a native crash.
-- **The app has never been launched.** No device or emulator was available, so
-  runtime behaviour is unverified.
+- **Black bar between the app and the navigation buttons** (seen on Android 13
+  /e/OS, 3-button navigation). Unresolved.
+
+  Native `getAndroidDisplayDimensions()` sizes the canvas as
+  `(height - statusBar) - actionBar`; when that comes out shorter than the
+  actual window, the window background shows through. Upstream already carries
+  a device-specific hack for the same symptom (`if (g_detect_SMT63x) sz_ret.y
+  += NavBarHeight;`, "hacking Java insets logic"), which suggests the geometry
+  here is fragile rather than principled.
+
+  **Tested and REJECTED**: removing the duplicate-looking `v.setPadding(...)`
+  in `setupEdgeToEdge()` made the black area BIGGER, not smaller -- the padding
+  was masking an under-sized canvas, not causing the gap. Kept behind
+  `OPCN_FIX_INSET_PADDING=1`, **off by default**; do not enable it expecting a
+  fix. The next step is to measure the real geometry on-device rather than
+  guess again.
 
 ## Licensing
 

@@ -2,3 +2,6 @@ cache/
 android-sdk/
 *.apk
 build_android_*/
+*.jks
+*.keystore
+*.password
