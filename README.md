@@ -12,19 +12,17 @@ sources instead.
 **These scripts produce a working APK.** Built and verified end to end:
 
     org.opencpn.opencpn  versionCode 128  versionName 5.14.0
-    81.8 MB   minSdk 21   targetSdk 36
-    native-code: arm64-v8a, armeabi-v7a
-    signature verifies (debug key)
+    minSdk 21   targetSdk 36   native-code: arm64-v8a, armeabi-v7a
+    debug   : 81.8 MB, debug-signed
+    release : 75.3 MB, not debuggable, signed + zipaligned (verified)
 
 Verified in the built APK: both `libgorp.so` cores (22.4 MB armv7a / 26.3 MB
 arm64, stripped), all 8 plugin binaries (4 plugins x 2 ABIs), the Qt5 runtime
 libraries, and 475 UI asset entries.
 
-**Verified on hardware**: both the debug and the signed release build install
-and run on Android 13 (/e/OS).
-
-One open defect: a **black bar between the app and the navigation buttons**.
-See "Known gaps" -- one hypothesis was tested and rejected.
+**Verified on hardware**: the signed release build installs and runs correctly
+on Android 13 (/e/OS), including the display-geometry fix below. No known
+functional defects outstanding.
 
 ## Requirements
 
@@ -155,7 +153,23 @@ Found while getting the build to pass; all are handled automatically.
    fails resource linking, and no release APK can be produced. Fixed by adding
    the Material Components dependency the app module already uses.
 
-5. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
+5. **The status bar height is subtracted twice, leaving a black band above
+   the navigation buttons.** `getDisplayMetrics` sends `height -
+   statusBarHeight`, but outside fullscreen `height` is `dm.heightPixels`,
+   which already excludes the status bar. The `m_fullScreen` branch adds it
+   back before the same subtraction; the normal path does not. Native then
+   sizes the canvas as `(height - statusBar) - actionBar`, so it comes out one
+   status bar short and the window background shows through.
+
+   Compounding it, `setupEdgeToEdge()` runs on EVERY Android version while the
+   matching compensation (`actionBarHeight += getNavBarHeight()`) is gated to
+   `SDK >= 35` -- so Android 13 gets edge-to-edge layout without the
+   correction written for it.
+
+   Fixed by mirroring the fullscreen correction. Verified on device: the black
+   band is gone. On by default; `OPCN_FIX_STATUSBAR_DOUBLE=0` disables it.
+
+6. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
    run's entry data: after stripping, the rebuilt APK still measured 217 MB
    while containing only 81 MB of live entries. Valid (a zip is read from its
    trailing central directory) but 136 MB of waste. `05-apk.sh` therefore runs
@@ -174,22 +188,13 @@ Found while getting the build to pass; all are handled automatically.
   sources"; it will not upgrade a Play Store install in place.
 - **Native libraries are stripped** by default, which is what brings the APK
   from 217 MB to 82 MB. Use `OPCN_KEEP_SYMBOLS=1` when debugging a native crash.
-- **Black bar between the app and the navigation buttons** (seen on Android 13
-  /e/OS, 3-button navigation). Unresolved.
+- **A rejected fix is kept behind a flag.** `OPCN_FIX_INSET_PADDING=1` removes
+  the `v.setPadding(...)` in `setupEdgeToEdge()`. It was the first hypothesis
+  for the black band and it made the band BIGGER -- the padding was masking an
+  under-sized canvas, not causing it. **Off by default; do not enable it
+  expecting a fix.** Kept only so the experiment is not repeated.
 
-  Native `getAndroidDisplayDimensions()` sizes the canvas as
-  `(height - statusBar) - actionBar`; when that comes out shorter than the
-  actual window, the window background shows through. Upstream already carries
-  a device-specific hack for the same symptom (`if (g_detect_SMT63x) sz_ret.y
-  += NavBarHeight;`, "hacking Java insets logic"), which suggests the geometry
-  here is fragile rather than principled.
-
-  **Tested and REJECTED**: removing the duplicate-looking `v.setPadding(...)`
-  in `setupEdgeToEdge()` made the black area BIGGER, not smaller -- the padding
-  was masking an under-sized canvas, not causing the gap. Kept behind
-  `OPCN_FIX_INSET_PADDING=1`, **off by default**; do not enable it expecting a
-  fix. The next step is to measure the real geometry on-device rather than
-  guess again.
+  The band itself is fixed by the status-bar correction (upstream defect 5).
 
 ## Licensing
 
