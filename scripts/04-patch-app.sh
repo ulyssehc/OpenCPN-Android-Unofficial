@@ -84,5 +84,47 @@ if [ -f "$M" ] && ! grep -q 'com.google.android.material:material' "$M"; then
     || { echo "FATAL: could not add Material dependency"; exit 1; }
 fi
 
+# 9. DEFAULT ON (OPCN_FIX_STATUSBAR_DOUBLE=0 disables): the status bar height is
+#    subtracted twice outside fullscreen mode. getDisplayMetrics sends
+#    "height - statusBarHeight", but outside m_fullScreen `height` comes from
+#    dm.heightPixels, which ALREADY excludes the status bar. The m_fullScreen
+#    branch adds it back ("height += statusBarHeight") before the same
+#    subtraction; the normal path does not. Native then sizes the canvas as
+#    (height - statusBar) - actionBar, so the canvas ends up one status bar
+#    short and the window background shows as a black band above the
+#    navigation buttons. Mirroring the fullscreen correction makes the sent
+#    value the true content height.
+#    Related: setupEdgeToEdge() runs on every Android version, but the
+#    edge-to-edge compensation (actionBarHeight += getNavBarHeight()) is gated
+#    to SDK >= 35, so Android 13 gets the layout without the correction.
+#    VERIFIED on device (Android 13 / e OS): the black band is gone. ON by
+#    default; set OPCN_FIX_STATUSBAR_DOUBLE=0 to build without it.
+if [ "${OPCN_FIX_STATUSBAR_DOUBLE:-1}" = "1" ] && [ -f "$Q" ]; then
+  python3 - "$Q" <<'PYEOF'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = """            height += statusBarHeight;
+        }
+"""
+new = """            height += statusBarHeight;
+        }
+        else {
+            // dm.heightPixels already excludes the status bar; the format
+            // string below subtracts it again. Add it back so the reported
+            // height is the real content height.
+            height += statusBarHeight;
+        }
+"""
+if old not in s:
+    sys.exit("FATAL: fullscreen height fixup block not found")
+s = s.replace(old, new, 1)
+open(p, "w").write(s)
+PYEOF
+  grep -q "already excludes the status bar" "$Q" \
+    && echo ">>> Applied status-bar double-subtraction fix" \
+    || { echo "FATAL: status-bar fix not applied"; exit 1; }
+fi
+
 echo ">>> Patched $G"
 grep -n 'def Qt_Base\|def OCPN_Base' "$G" | sed 's/^/    /'
