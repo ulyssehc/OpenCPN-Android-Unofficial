@@ -9,32 +9,45 @@ sources instead.
 
 ## Status
 
-**The scripts have not produced an APK yet.** They were written and partially
-verified in an environment whose egress policy blocks `dl.google.com`, so the
-Android SDK and NDK could never be downloaded.
+**These scripts produce a working APK.** Built and verified end to end:
 
-What IS verified, against real checkouts:
+    org.opencpn.opencpn  versionCode 128  versionName 5.14.0
+    81.8 MB   minSdk 21   targetSdk 36
+    native-code: arm64-v8a, armeabi-v7a
+    signature verifies (debug key)
 
-- All three upstream repositories clone, and the prebuilt libraries in
-  `OCPNAndroidCommon` are real files, not Git LFS stubs (895 MB: 125 arm64 and
-  141 armv7a Qt5 `.so`, plus wxQt for both ABIs).
-- `OCPNAndroidCoreBuildSupport.zip` (326 MB) downloads and extracts, providing
-  prebuilt wxWidgets and OpenSSL for the core build (1.3 GB extracted).
-- `scripts/04-patch-app.sh` applies cleanly, and after it **117 of the app's
-  asset sources resolve**; the only ones left missing are translations (below).
+Verified in the built APK: both `libgorp.so` cores (22.4 MB armv7a / 26.3 MB
+arm64, stripped), all 8 plugin binaries (4 plugins x 2 ABIs), the Qt5 runtime
+libraries, and 475 UI asset entries.
 
-What is NOT verified: the compile and link steps, and therefore whether the
-resulting APK runs. Treat step 3 and step 5 as untested.
+**Still NOT verified: that the app runs correctly on a device.** It was never
+installed or launched -- there is no device or emulator in the build
+environment. A clean build and a valid package are not the same as a working
+chart plotter.
 
 ## Requirements
 
-- Linux x86_64, JDK 17+, cmake, ninja/make, git, curl, unzip
+- Linux x86_64, JDK 17+, cmake, make, git, curl, unzip, **gettext**
+  (`scripts/00-hostdeps.sh` installs these; gettext is not optional -- the core
+  cmake calls `find_package(Gettext)` and configure fails without msgfmt)
 - ~15 GB free disk
 - Network access to:
   - `dl.google.com` and `maven.google.com` — SDK, NDK, Android Gradle Plugin,
     AndroidX. `maven.google.com` 301-redirects to `dl.google.com`, so **both**
     must be allowed or artifact resolution fails at the redirect.
   - `github.com` / `objects.githubusercontent.com` — sources and support bundle
+  - `codeload.github.com` — cmake fetches shapelib and rapidjson as GitHub
+    archive tarballs from here. If archive downloads are refused, run with
+    `OPCN_OFFLINE_DEPS=1`: `02-sources.sh` clones both from git instead and
+    `03-core.sh` passes `FETCHCONTENT_SOURCE_DIR_*`.
+
+    Note that allowing the *host* may not be enough. On the network this was
+    built on, the TLS tunnel to codeload succeeded while the archive request
+    itself still returned 403 — a gateway permitting the git protocol but not
+    archive endpoints. Plain `git clone` worked throughout, which is why the
+    workaround uses it. Prefer the default when archives are available: it
+    keeps upstream's `URL_HASH` check, which `FETCHCONTENT_SOURCE_DIR` bypasses
+    in favour of a (mutable) git tag.
   - `repo1.maven.org`, `plugins.gradle.org`, `services.gradle.org`
 
 Qt's and OpenCPN's own download servers are NOT needed: every native
@@ -44,6 +57,9 @@ prerequisite comes from GitHub.
 
     OPCN_ROOT=~/opcn-build ./build.sh
 
+    # where GitHub archive downloads are blocked (see Requirements):
+    OPCN_ROOT=~/opcn-build OPCN_OFFLINE_DEPS=1 ./build.sh
+
 Or one stage at a time — `scripts/01-toolchain.sh` … `scripts/05-apk.sh`.
 Configuration and pinned versions live in `scripts/env.sh`.
 
@@ -51,6 +67,7 @@ Configuration and pinned versions live in `scripts/env.sh`.
 
 | Component | Version | Source |
 |---|---|---|
+| OpenCPN core | v5.14.x @ `4f7e6f0` (2026-08-13) | stable branch matching the app |
 | Android NDK | 26.1.10909125 | pinned by OpenCPN CI |
 | SDK cmdline-tools | 11076708 | |
 | compileSdk / buildTools | 35 / 34.0.0 | `OpenCPN-Android/app/build.gradle` |
@@ -75,9 +92,14 @@ paths). The live Android build is `bdbcat/OpenCPN-Android`.
 `scripts/04-patch-app.sh` removes things that cannot be built outside the
 upstream maintainer's own machine. Each is a decision, not an oversight:
 
-1. **Firebase / Crashlytics.** The app applies `com.google.gms.google-services`
-   but ships no `google-services.json`, so the plugin hard-fails. Removed
-   rather than fabricating a Firebase config. No crash reporting.
+1. **Firebase / Crashlytics / Analytics.** The app applies
+   `com.google.gms.google-services` but ships no `google-services.json`, so the
+   plugin hard-fails. Removing the plugin and dependencies is not sufficient:
+   `QtActivity.java` also USES `FirebaseAnalytics` (import, field, and a
+   `getInstance` call whose result is never read again), so the patch strips
+   those four references too and asserts none remain. The alternative -- a
+   fabricated `google-services.json` -- would build, but ship analytics wired to
+   a bogus project. No crash reporting, no analytics.
 2. **`oexserverd`.** Copied from the proprietary o-charts plugin, which is not
    public. Dropped, so **o-charts encrypted charts will not work**. BSB/raster,
    S57 vector and CM93 are unaffected.
@@ -88,6 +110,36 @@ It also repairs upstream layout drift: the app still refers to
 This one matters — Gradle's `Copy` skips a missing source **silently**, so
 leaving it yields an APK with no toolbar icons and no `styles.xml`, rather
 than a build error.
+
+## Upstream problems this pipeline works around
+
+Found while getting the build to pass; all are handled automatically.
+
+1. **arm64 is unbuildable with any current NDK.**
+   `buildandroid/build_android.cmake` sets `CMAKE_AR` to
+   `aarch64-linux-android-ar`, a triple-prefixed binutils wrapper Google removed
+   in NDK r23+. armhf is unaffected because its branch already uses `llvm-ar`.
+   OpenCPN CI builds only armhf, so nothing exercises this. Fixed by patching
+   the toolchain file AND adding an NDK compat symlink -- the symlink is what
+   rescues a build tree whose `link.txt` was already generated with the dead
+   path, since cmake does not regenerate FetchContent sub-builds.
+
+2. **`OCPN_BUILD_SAMPLE=ON` breaks the v5.14.x cross-build.** Upstream's armhf
+   CI script passes it, but `plugins/demo_pi_sample` calls
+   `find_package(wxWidgets)`, which searches for a HOST wxWidgets and fails the
+   whole configure. Set to `OFF`; the APK does not use demo_pi.
+
+3. **The app reads UI assets from a path the core no longer has.**
+   `app/build.gradle` copies from `src/bitmaps/`, which the core tree calls
+   `resources/bitmaps/`. Gradle's `Copy` SKIPS a missing source silently, so
+   this produces an APK with no toolbar icons and no `styles.xml` rather than a
+   build failure -- it looks like a clean build.
+
+4. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
+   run's entry data: after stripping, the rebuilt APK still measured 217 MB
+   while containing only 81 MB of live entries. Valid (a zip is read from its
+   trailing central directory) but 136 MB of waste. `05-apk.sh` therefore runs
+   `clean assembleDebug`.
 
 ## Known gaps
 
@@ -100,6 +152,10 @@ than a build error.
   build breaks.
 - The APK is **debug-signed**. Installing it requires "install from unknown
   sources"; it will not upgrade a Play Store install in place.
+- **Native libraries are stripped** by default, which is what brings the APK
+  from 217 MB to 82 MB. Use `OPCN_KEEP_SYMBOLS=1` when debugging a native crash.
+- **The app has never been launched.** No device or emulator was available, so
+  runtime behaviour is unverified.
 
 ## Licensing
 

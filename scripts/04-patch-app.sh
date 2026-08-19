@@ -34,5 +34,23 @@ sed -i "/^\s*jcenter()\s*$/d" "$APP/build.gradle" "$APP/settings.gradle"
 #    and no styles.xml rather than a build failure.
 sed -i "s|\${OCPN_Base}/src/bitmaps/|\${OCPN_Base}/resources/bitmaps/|g" "$G"
 
+# 6. The app's Java also USES FirebaseAnalytics (4 references in QtActivity.java:
+#    an import, a field, a comment and a getInstance call whose result is never
+#    read again). Removing the dependency alone breaks compilation, so strip the
+#    usage too. The alternative -- a fabricated google-services.json -- would
+#    make the build succeed while shipping analytics wired to a bogus project.
+Q="$APP/app/src/main/java/org/qtproject/qt5/android/bindings/QtActivity.java"
+if [ -f "$Q" ]; then
+  [ -f "$Q.orig" ] || cp "$Q" "$Q.orig"
+  cp "$Q.orig" "$Q"
+  sed -i "/^import com\.google\.firebase\.analytics\.FirebaseAnalytics;/d" "$Q"
+  sed -i "/private FirebaseAnalytics mFirebaseAnalytics;/d" "$Q"
+  sed -i "/\/\/ Obtain the FirebaseAnalytics instance\./d" "$Q"
+  sed -i "/mFirebaseAnalytics = FirebaseAnalytics\.getInstance(this);/d" "$Q"
+  left=$(grep -c "Firebase" "$Q" || true)
+  echo ">>> Stripped Firebase from QtActivity.java (references left: $left)"
+  [ "$left" -eq 0 ] || { echo "FATAL: Firebase references remain"; exit 1; }
+fi
+
 echo ">>> Patched $G"
 grep -n 'def Qt_Base\|def OCPN_Base' "$G" | sed 's/^/    /'
