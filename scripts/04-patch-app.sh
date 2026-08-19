@@ -52,5 +52,37 @@ if [ -f "$Q" ]; then
   [ "$left" -eq 0 ] || { echo "FATAL: Firebase references remain"; exit 1; }
 fi
 
+# 7. OPTIONAL (OPCN_FIX_INSET_PADDING=1): remove the double inset that leaves a
+#    black bar above the navigation buttons. setupEdgeToEdge() pads the content
+#    view by the system-bar insets, while the SAME insets and navBarHeight are
+#    also handed to the native layer (getDisplayMetrics), which lays out around
+#    them itself -- so the nav bar height is reserved twice and the window
+#    background shows through. Removing the padding keeps edge-to-edge and lets
+#    the native side do the insetting. m_insets must keep being assigned by the
+#    listener: the metrics string dereferences it, so dropping the listener
+#    entirely would NPE at startup.
+if [ "${OPCN_FIX_INSET_PADDING:-0}" = "1" ] && [ -f "$Q" ]; then
+  sed -i "s|^\( *\)v\.setPadding(m_insets\.left, m_insets\.top, m_insets\.right, m_insets\.bottom);|\1// v.setPadding(...) removed: native layer already applies these insets|" "$Q"
+  if grep -q "v.setPadding(m_insets" "$Q"; then
+    echo "FATAL: inset padding line not patched"; exit 1
+  fi
+  echo ">>> Removed duplicate inset padding (OPCN_FIX_INSET_PADDING)"
+fi
+
+# 8. The materialfilemanager module's night theme extends
+#    Theme.MaterialComponents.DayNight.DarkActionBar and uses Material attrs
+#    (colorPrimaryVariant, colorOnPrimary), but the module only depends on the
+#    pre-AndroidX support library. Debug builds never notice; release runs
+#    verifyReleaseResources and fails resource linking. Add the same Material
+#    version the app module already uses.
+M="$APP/materialfilemanager/build.gradle"
+if [ -f "$M" ] && ! grep -q 'com.google.android.material:material' "$M"; then
+  [ -f "$M.orig" ] || cp "$M" "$M.orig"
+  sed -i "s|^\( *\)implementation 'com.android.support:appcompat-v7:26.1.0'|\1implementation 'com.android.support:appcompat-v7:26.1.0'\n\1implementation 'com.google.android.material:material:1.10.0'|" "$M"
+  grep -q 'com.google.android.material:material' "$M" \
+    && echo ">>> Added Material Components to materialfilemanager" \
+    || { echo "FATAL: could not add Material dependency"; exit 1; }
+fi
+
 echo ">>> Patched $G"
 grep -n 'def Qt_Base\|def OCPN_Base' "$G" | sed 's/^/    /'
