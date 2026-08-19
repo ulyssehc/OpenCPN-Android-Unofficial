@@ -7,6 +7,28 @@ OpenCPN's official Android app is distributed only through Google Play, as a
 paid app. There is no APK download. This repository builds one from the public
 sources instead.
 
+## Who wrote this
+
+**Everything in this repository was written by Claude Code (Anthropic's coding
+agent), in a single session, at the request of the repository owner.** The
+scripts, the patches, the commit messages and this README are all agent-authored.
+Commits are attributed to the owner as author with a `Co-Authored-By` trailer
+naming Claude.
+
+The split of what was actually verified, and by whom, matters more than the
+authorship:
+
+- **The agent verified**: that the sources build; that the artifacts are real
+  (file types, sizes, ABIs, APK contents, signature, alignment, non-debuggable);
+  and that each patch applies and holds.
+- **A human verified**: that the app installs and runs on a real phone
+  (Android 13 / e OS), and that the black band above the navigation buttons is
+  gone. No device or emulator existed in the build environment, so nothing about
+  runtime behaviour could be checked by the agent.
+
+One hypothesis the agent got wrong is recorded below as rejected rather than
+quietly deleted, because a wrong fix that looks plausible is worth warning about.
+
 ## Status
 
 **These scripts produce a working APK.** Built and verified end to end:
@@ -23,6 +45,10 @@ libraries, and 475 UI asset entries.
 **Verified on hardware**: the signed release build installs and runs correctly
 on Android 13 (/e/OS), including the display-geometry fix below. No known
 functional defects outstanding.
+
+**This repository contains build scripts only** — no APK and no signing key.
+Both are produced by running the scripts; the keystore is generated on first
+release build and deliberately gitignored.
 
 ## Requirements
 
@@ -174,6 +200,28 @@ Found while getting the build to pass; all are handled automatically.
    while containing only 81 MB of live entries. Valid (a zip is read from its
    trailing central directory) but 136 MB of waste. `05-apk.sh` therefore runs
    `clean assembleDebug`.
+
+## Worth reporting upstream
+
+Four of the six defects below are not specific to this build setup -- they are
+in the upstream sources and affect anyone building or, in one case, running the
+official app:
+
+- **Defect 5 (status bar subtracted twice)** most likely affects the **Google
+  Play build too**, on any pre-Android-15 device. The code path is identical
+  and nothing in this pipeline introduced it: `setupEdgeToEdge()` runs on every
+  Android version, while the compensation written for it is gated to
+  `SDK >= 35`.
+- **Defect 1 (arm64 `CMAKE_AR`)** makes arm64 unbuildable with any NDK from
+  r23 onward. Upstream CI builds armhf only, so nothing exercises it.
+- **Defect 4 (`materialfilemanager`)** makes `assembleRelease` fail outright,
+  so the release path is broken as shipped.
+- **Defect 3 (`src/bitmaps` vs `resources/bitmaps`)** silently produces an APK
+  with no toolbar icons, because Gradle's `Copy` skips missing sources without
+  failing.
+
+These have not been reported upstream. Anyone is welcome to; the analysis and
+the one-line patches are in `scripts/04-patch-app.sh` and `scripts/03-core.sh`.
 
 ## Known gaps
 
