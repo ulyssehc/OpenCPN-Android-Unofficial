@@ -23,4 +23,15 @@ yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || t
 
 test -x "$TOOL_BASE/bin/clang" \
   || { echo "FATAL: NDK toolchain missing at $TOOL_BASE"; exit 1; }
+
+# NDK r23+ removed the triple-prefixed binutils wrappers, but OpenCPN's arm64
+# toolchain file still calls aarch64-linux-android-ar. 03-core.sh patches that
+# file; the symlink additionally repairs build trees whose link.txt was already
+# generated with the dead path (cmake does not regenerate FetchContent
+# sub-builds), so a resumed build recovers instead of needing a wipe.
+if [ ! -e "$TOOL_BASE/bin/aarch64-linux-android-ar" ]; then
+  ln -sf llvm-ar "$TOOL_BASE/bin/aarch64-linux-android-ar"
+  echo ">>> Added NDK compat symlink: aarch64-linux-android-ar -> llvm-ar"
+fi
+
 echo ">>> Toolchain OK: $TOOL_BASE"
