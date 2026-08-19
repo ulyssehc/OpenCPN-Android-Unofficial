@@ -26,8 +26,6 @@ authorship:
   gone. No device or emulator existed in the build environment, so nothing about
   runtime behaviour could be checked by the agent.
 
-One hypothesis the agent got wrong is recorded below as rejected rather than
-quietly deleted, because a wrong fix that looks plausible is worth warning about.
 
 ## Status
 
@@ -236,14 +234,6 @@ the one-line patches are in `scripts/04-patch-app.sh` and `scripts/03-core.sh`.
   sources"; it will not upgrade a Play Store install in place.
 - **Native libraries are stripped** by default, which is what brings the APK
   from 217 MB to 82 MB. Use `OPCN_KEEP_SYMBOLS=1` when debugging a native crash.
-- **A rejected fix is kept behind a flag.** `OPCN_FIX_INSET_PADDING=1` removes
-  the `v.setPadding(...)` in `setupEdgeToEdge()`. It was the first hypothesis
-  for the black band and it made the band BIGGER -- the padding was masking an
-  under-sized canvas, not causing it. **Off by default; do not enable it
-  expecting a fix.** Kept only so the experiment is not repeated.
-
-  The band itself is fixed by the status-bar correction (upstream defect 5).
-
 ## Licensing
 
 OpenCPN is GPLv2+. Anything built here inherits that. This repository contains
