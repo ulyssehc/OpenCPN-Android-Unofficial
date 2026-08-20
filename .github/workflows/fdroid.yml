@@ -41,13 +41,25 @@ jobs:
           echo "REPO_HTML_URL=${{ github.server_url }}/${{ github.repository }}" >> "$GITHUB_ENV"
           echo "Publishing to https://${OWNER,,}.github.io/${NAME}/repo"
 
-      # The distro package matches the runner's Python. Installing
-      # fdroidserver from pip pulls unmaintained deps (clint/args) that fail
-      # to build on current Python.
+      # From pip, in a venv, pinned -- NOT the distro package. Ubuntu ships
+      # fdroidserver 2.2.1, which uses androguard 3.x: its ARSC parser raises
+      # "res1 must be zero!" on any resources.arsc produced by a current AAPT2,
+      # so it cannot read the APKs this repository builds. That is what failed
+      # the first publish. Reproduced locally on the published APK, where 2.4.5
+      # (androguard 4.1.4) processes the same file cleanly. The pip route was
+      # previously avoided because old fdroidserver pulled unmaintained deps
+      # (clint/args) that fail to build on current Python; 2.4.x no longer does.
+      #
+      # Pinned rather than floating: this step signs an index, and an upgrade
+      # changing how APKs are parsed should be a decision, not a surprise on
+      # the next publish.
       - name: Install fdroidserver
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fdroidserver
+          python3 -m venv "$RUNNER_TEMP/fdvenv"
+          "$RUNNER_TEMP/fdvenv/bin/pip" install --quiet --upgrade pip
+          "$RUNNER_TEMP/fdvenv/bin/pip" install --quiet 'fdroidserver==2.4.5'
+          echo "$RUNNER_TEMP/fdvenv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/fdvenv/bin/fdroid" --version
 
       - name: Fetch APKs from the release
         env:
@@ -95,9 +107,18 @@ jobs:
           # Publish the fingerprint in the job log: users need it to add the
           # repo safely, and it is not secret.
           echo "--- repo fingerprint (SHA-256) ---"
-          keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEY_ALIAS" \
-            -storepass "$KEYSTORE_PASS" 2>/dev/null \
-            | grep -i 'SHA256:' | head -1
+          GOT="$(keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEY_ALIAS" \
+                   -storepass "$KEYSTORE_PASS" 2>/dev/null \
+                 | sed -n 's/.*SHA256: //p' | head -1 | tr -d ':' | tr 'A-Z' 'a-z')"
+          echo "$GOT"
+          # Fail loudly if the index was signed by a key other than the one
+          # users are told to pin. A repo whose fingerprint does not match the
+          # published one is a repo nobody can add safely.
+          WANT="$(sed -n 's/.*fingerprint=\([0-9a-f]\{64\}\).*/\1/p' ../fdroid/README.md | head -1)"
+          if [ -n "$WANT" ] && [ "$GOT" != "$WANT" ]; then
+            echo "FATAL: index signed with $GOT but the published fingerprint is $WANT" >&2
+            exit 1
+          fi
 
       - name: Add a landing page
         run: |

@@ -14,7 +14,7 @@ The fingerprint is printed by `fdroid update` and must be published alongside
 the URL — it is what stops a hostile mirror from serving different APKs. F-Droid
 accepts it appended to the URL:
 
-    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo?fingerprint=<SHA256>
+    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo?fingerprint=253ccb6fdae9a21dadd3053b2287603036e74dc75c189105953826aca5311838
 
 ## Two different keys, both irreplaceable
 
