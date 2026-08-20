@@ -1,0 +1,25 @@
+# F-Droid repo configuration.
+#
+# NO SECRETS HERE. The signing keystore and its passwords come from the
+# environment at build time (see .github/workflows/fdroid.yml), because this
+# file is public and a repo signing key is as sensitive as the APK key.
+
+repo_url: https://ulyssehc.github.io/opcn/repo
+repo_name: OpenCPN (unofficial build)
+repo_description: |-
+    Unofficial OpenCPN Android builds, compiled from the public GPL sources.
+    Not produced or endorsed by the OpenCPN project. Analytics removed,
+    o-charts support omitted. See https://github.com/ulyssehc/opcn
+
+# Archive is off: this repo serves a handful of current builds, and every
+# APK it serves is ~75 MB of GitHub Pages payload.
+archive_older: 0
+
+# Populated from secrets by CI.
+keystore: $KEYSTORE_PATH
+repo_keyalias: $KEY_ALIAS
+keystorepass: $KEYSTORE_PASS
+keypass: $KEY_PASS
+
+# The build environment provides these.
+sdk_path: $ANDROID_HOME
