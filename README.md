@@ -39,12 +39,14 @@ build is checked against it. Verify a downloaded APK yourself with:
 
     apksigner verify --print-certs opencpn-*.apk
 
-**The F-Droid repository key** signs the index, not the app. It is printed in
-the publish workflow's log rather than committed, because it is created on the
-first publish. Pin it when adding the repository — a repo URL added without a
-fingerprint trusts whatever key answers that URL:
+**The F-Droid repository key** signs the index, not the app. Pin it when adding
+the repository — a repo URL added without a fingerprint trusts whatever key
+answers that URL:
 
-    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo?fingerprint=<SHA-256>
+    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo?fingerprint=253ccb6fdae9a21dadd3053b2287603036e74dc75c189105953826aca5311838
+
+The publish workflow prints the same value under `--- repo fingerprint
+(SHA-256) ---`, so it can be checked against this file on every run.
 
 A certificate fingerprint is a public value in both cases. It identifies a key;
 it cannot sign anything.
