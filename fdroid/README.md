@@ -8,13 +8,13 @@ install and update them like any other app.
 Add the repository URL in F-Droid (Settings -> Repositories -> +), together
 with its fingerprint:
 
-    https://ulyssehc.github.io/opcn/repo
+    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo
 
 The fingerprint is printed by `fdroid update` and must be published alongside
 the URL — it is what stops a hostile mirror from serving different APKs. F-Droid
 accepts it appended to the URL:
 
-    https://ulyssehc.github.io/opcn/repo?fingerprint=<SHA256>
+    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo?fingerprint=<SHA256>
 
 ## Two different keys, both irreplaceable
 
