@@ -195,8 +195,9 @@ Found while getting the build to pass; all are handled automatically.
    `SDK >= 35` -- so Android 13 gets edge-to-edge layout without the
    correction written for it.
 
-   Fixed by mirroring the fullscreen correction. Verified on device: the black
-   band is gone. On by default; `OPCN_FIX_STATUSBAR_DOUBLE=0` disables it.
+   Fixed by mirroring the fullscreen correction. **Confirmed by a controlled
+   A/B test on one core**: with the patch the band is gone, with
+   `OPCN_FIX_STATUSBAR_DOUBLE=0` it returns. On by default.
 
 6. **Four style icons are published nowhere.** `androidUTIL.cpp` loads
    `<SharedDataDir>/styles/{chek_full,chek_empty,tabbar_button_left,
@@ -211,7 +212,22 @@ Found while getting the build to pass; all are handled automatically.
    assets do not exist. `assets/styles/` therefore holds **our own drawings**;
    `04-patch-app.sh` installs them into the core tree before packaging.
 
-7. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
+7. **Translations are compiled, then excluded from the Android build.**
+   `CMakeLists.txt` defines an `i18n` target and then wires it in for every
+   platform except this one:
+
+       add_custom_target(i18n ... DEPENDS ${_gmoFiles})
+       if (NOT QT_ANDROID)
+         add_dependencies(${PACKAGE_NAME} i18n)
+       endif ()
+
+   So the catalogs are never built, gradle's `copyLocale*` tasks find nothing,
+   and -- `Copy` skipping missing sources silently again -- the app ships
+   untranslated with no error anywhere. `03-core.sh` runs `make i18n`, which
+   puts `Resources/opencpn_<lang>.lproj/opencpn.mo` exactly where gradle looks.
+   Verified on device: 7 languages, core plus all four plugin catalogs.
+
+8. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
    run's entry data: after stripping, the rebuilt APK still measured 217 MB
    while containing only 81 MB of live entries. Valid (a zip is read from its
    trailing central directory) but 136 MB of waste. `05-apk.sh` therefore runs

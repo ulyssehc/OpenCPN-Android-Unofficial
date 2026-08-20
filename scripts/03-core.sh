@@ -63,7 +63,18 @@ build() {  # build <tuple> <builddir>
       ..
     # Upstream notes this explicit step is needed in CI; harmless otherwise.
     make lunasvg
-    make -j"$(nproc)" )
+    make -j"$(nproc)"
+    # Translations. Upstream defines an i18n target but deliberately excludes
+    # it from the Android build:
+    #     add_custom_target(i18n ... DEPENDS ${_gmoFiles})
+    #     if (NOT QT_ANDROID)
+    #       add_dependencies(${PACKAGE_NAME} i18n)
+    #     endif ()
+    # So the core catalogs are never compiled, gradle's copyLocale* tasks find
+    # nothing, and -- because Gradle Copy skips a missing source silently --
+    # the app ships untranslated with no error anywhere. Building the target
+    # puts Resources/opencpn_<lang>.lproj/opencpn.mo where gradle looks.
+    make i18n )
 }
 
 # Tuple format is "<target>;<api>;<arch>", per CMakeLists.txt lines 52-53.
