@@ -53,4 +53,13 @@ if [ "${OPCN_OFFLINE_DEPS:-0}" = "1" ]; then
   done
 fi
 
+# Pinned lunasvg (see env.sh). Cloned with submodules: plutovg is the renderer.
+if [ ! -d "$CACHE/lunasvg-$LUNASVG_REF" ]; then
+  echo ">>> Fetching lunasvg $LUNASVG_REF"
+  git clone -q --recurse-submodules https://github.com/sammycage/lunasvg \
+    "$CACHE/lunasvg-$LUNASVG_REF"
+  ( cd "$CACHE/lunasvg-$LUNASVG_REF" && git checkout -q "$LUNASVG_REF" \
+      && git submodule update --init --recursive -q )
+fi
+
 echo ">>> Sources OK"

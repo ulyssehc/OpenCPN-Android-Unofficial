@@ -32,10 +32,20 @@ build() {  # build <tuple> <builddir>
   local fc=()
   if [ "${OPCN_OFFLINE_DEPS:-0}" = "1" ]; then
     local shp="$dir/_shapelib_src" rj="$dir/_rapidjson_src"
-    [ -d "$shp" ] || cp -r "$CACHE/shapelib-v1.6.1" "$shp"
-    [ -d "$rj" ]  || cp -r "$CACHE/rapidjson-v1.1.0" "$rj"
+    # REFRESH, do not merely create: the build applies patches to these trees
+    # in place, so a second run would patch already-patched sources and fail
+    # ("Failed to apply patch"). Copying pristine content over the top each
+    # run is idempotent and needs no delete permission.
+    mkdir -p "$shp" "$rj"
+    cp -r "$CACHE/shapelib-v1.6.1/." "$shp/"
+    cp -r "$CACHE/rapidjson-v1.1.0/." "$rj/"
     fc=(-DFETCHCONTENT_SOURCE_DIR_SHAPELIB_SRC="$shp"
         -DFETCHCONTENT_SOURCE_DIR_RAPIDJSON_SRC="$rj")
+  else
+    # Clear any cached override from a previous OPCN_OFFLINE_DEPS=1 run;
+    # otherwise cmake keeps using the old (already patched) copies.
+    fc=(-UFETCHCONTENT_SOURCE_DIR_SHAPELIB_SRC
+        -UFETCHCONTENT_SOURCE_DIR_RAPIDJSON_SRC)
   fi
   ( cd "$dir"
     # OCPN_BUILD_SAMPLE is OFF deliberately. Upstream CI passes ON, but on
@@ -48,6 +58,7 @@ build() {  # build <tuple> <builddir>
       -DOCPN_TARGET_TUPLE:STRING="$tuple" \
       -DOCPN_BUILD_SAMPLE=OFF \
       -Dtool_base="$TOOL_BASE" \
+      -DFETCHCONTENT_SOURCE_DIR_LUNASVG="$CACHE/lunasvg-$LUNASVG_REF" \
       "${fc[@]}" \
       ..
     # Upstream notes this explicit step is needed in CI; harmless otherwise.
