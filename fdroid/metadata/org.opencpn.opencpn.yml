@@ -1,0 +1,41 @@
+# F-Droid metadata for the self-built OpenCPN APK.
+# Field reference: https://f-droid.org/docs/Build_Metadata_Reference/
+Categories:
+  - Navigation
+License: GPL-2.0-or-later
+AuthorName: OpenCPN project
+WebSite: https://opencpn.org
+SourceCode: https://github.com/OpenCPN/OpenCPN
+IssueTracker: https://github.com/OpenCPN/OpenCPN/issues
+
+Name: OpenCPN
+Summary: Chart plotter and marine navigation
+
+Description: |-
+  Concise chart plotter and navigator for marine use. Supports BSB raster
+  charts, S57 and CM93 vector charts, GPS input, AIS, route and waypoint
+  navigation.
+
+  This is an UNOFFICIAL build, compiled from the public GPL sources by the
+  repository owner. It is not produced or endorsed by the OpenCPN project.
+  The official Android app is published on Google Play by the OpenCPN
+  developers; buying it supports their work.
+
+  Differences from the official build:
+
+  * Firebase Analytics and Crashlytics removed (no analytics, no crash
+    reporting).
+  * o-charts support omitted, because the required oexserverd binary is
+    proprietary and not publicly available.
+  * Signed with the repository owner's key, so it cannot update a Play
+    Store install in place.
+
+  Build scripts: https://github.com/ulyssehc/opcn
+
+# Google Play Services (maps + location) are still linked in, so the build
+# is not free of proprietary dependencies. Declare it rather than hide it.
+AntiFeatures:
+  - NonFreeDep
+
+CurrentVersion: 5.14.0
+CurrentVersionCode: 128
