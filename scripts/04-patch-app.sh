@@ -109,5 +109,19 @@ PYEOF
     || { echo "FATAL: status-bar fix not applied"; exit 1; }
 fi
 
+# 9. Supply the four style icons upstream never published. androidUTIL.cpp
+#    loads <SharedDataDir>/styles/{chek_full,chek_empty,tabbar_button_left,
+#    tabbar_button_right}.png for the Qt checkbox indicator and tab-bar scroll
+#    arrows, but they exist in none of the upstream repositories -- the core's
+#    data/styles/ holds only qtstylesheet.qss. Missing, they render as empty
+#    boxes and log only "can't open file". These are our own drawings; see
+#    assets/styles/README.md.
+ICONS="$(cd "$(dirname "$0")/.." && pwd)/assets/styles"
+if [ -d "$ICONS" ]; then
+  mkdir -p "$OCPN/data/styles"
+  cp "$ICONS"/*.png "$OCPN/data/styles/"
+  echo ">>> Installed $(ls "$ICONS"/*.png | wc -l) replacement style icons"
+fi
+
 echo ">>> Patched $G"
 grep -n 'def Qt_Base\|def OCPN_Base' "$G" | sed 's/^/    /'
