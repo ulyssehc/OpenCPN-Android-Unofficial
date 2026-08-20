@@ -100,6 +100,11 @@ Configuration and pinned versions live in `scripts/env.sh`.
 
 ## Pinned versions
 
+Which commits, and **why those commits**, is recorded in [PINNING.md](PINNING.md);
+`scripts/07-check-pins.sh` enforces the rules. Read it before a version bump —
+picking a branch tip instead of the release commit produces a build that works
+well enough to fool you.
+
 | Component | Version | Source |
 |---|---|---|
 | OpenCPN core | v5.14.x @ `4f7e6f0` (2026-08-13) | stable branch matching the app |

@@ -14,8 +14,13 @@ OCPN_REPO="https://github.com/OpenCPN/OpenCPN"              # core, builds libgo
 # master. Pairing a released Java app with dev-HEAD native code invites subtle
 # runtime skew. Pinned to a commit so the build is reproducible: master moves
 # daily and a branch name alone is not a version.
-OCPN_REF="4f7e6f09dd6c119284e4d19474ebadf626445135"          # v5.14.x, 2026-08-13
+OCPN_REF="91f3b674"                                          # "Version 5.14.0", 2026-04-07
 OCPN_BRANCH="v5.14.x"
+
+# Upstream fetches lunasvg with GIT_TAG master -- an unpinned moving branch, so
+# the renderer you get depends on the day you build. Pin it to the last commit
+# before the 5.14.0 release so icons render as the release intended.
+LUNASVG_REF="b350c01"                                        # 2026-02-05
 APP_REPO="https://github.com/bdbcat/OpenCPN-Android"        # the Gradle app (5.14.0 / vc 128)
 COMMON_REPO="https://github.com/bdbcat/OCPNAndroidCommon"   # prebuilt Qt5 + wxQt (895 MB)
 
