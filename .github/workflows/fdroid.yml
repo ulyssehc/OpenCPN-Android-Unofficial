@@ -29,6 +29,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Derived, never hardcoded. GitHub redirects github.com/<old-name> after a
+      # rename, but Pages does NOT: the site moves to the new name and a baked-in
+      # URL silently points at a 404. repo_url goes into the SIGNED index, so a
+      # stale one is a repo clients cannot fetch from.
+      - name: Derive the public URLs
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          NAME="${{ github.event.repository.name }}"
+          echo "REPO_URL=https://${OWNER,,}.github.io/${NAME}/repo" >> "$GITHUB_ENV"
+          echo "REPO_HTML_URL=${{ github.server_url }}/${{ github.repository }}" >> "$GITHUB_ENV"
+          echo "Publishing to https://${OWNER,,}.github.io/${NAME}/repo"
+
       # The distro package matches the runner's Python. Installing
       # fdroidserver from pip pulls unmaintained deps (clint/args) that fail
       # to build on current Python.
@@ -67,6 +79,7 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.FDROID_KEYSTORE_PASS }}
           KEY_PASS: ${{ secrets.FDROID_KEY_PASS }}
           KEY_ALIAS: ${{ secrets.FDROID_KEY_ALIAS }}
+          # REPO_URL and REPO_HTML_URL come from the derive step via GITHUB_ENV.
           # ANDROID_HOME is deliberately not set here: the runner already
           # exports it, and ${{ env.ANDROID_HOME }} would expand to empty.
         run: |
@@ -74,6 +87,7 @@ jobs:
           # so no secret is ever written to a tracked file.
           test -n "$(ls repo/*.apk 2>/dev/null)" \
             || { echo "No APKs in fdroid/repo -- did the release have assets?" >&2; exit 1; }
+          test -n "$REPO_URL" || { echo "REPO_URL is empty" >&2; exit 1; }
           envsubst < config.yml > config.runtime.yml
           mv config.runtime.yml config.yml
           chmod 600 config.yml   # fdroid warns if the config is world-readable
@@ -87,17 +101,17 @@ jobs:
 
       - name: Add a landing page
         run: |
-          cat > fdroid/repo/index.html <<'HTML'
+          cat > fdroid/repo/index.html <<HTML
           <!doctype html><meta charset="utf-8">
           <title>OpenCPN (unofficial) F-Droid repo</title>
-          <style>body{font-family:system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5}code{background:#eee;padding:.1rem .3rem}</style>
+          <style>body{font-family:system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5}code{background:#eee;padding:.1rem .3rem;word-break:break-all}</style>
           <h1>OpenCPN — unofficial builds</h1>
           <p>Add this URL as a repository in F-Droid:</p>
-          <p><code>https://ulyssehc.github.io/opcn/repo</code></p>
+          <p><code>${REPO_URL}</code></p>
           <p>Unofficial builds from the public GPL sources, not endorsed by the
           OpenCPN project. Analytics removed; o-charts support omitted; signed
           with a personal key. Build scripts:
-          <a href="https://github.com/ulyssehc/opcn">github.com/ulyssehc/opcn</a>.</p>
+          <a href="${REPO_HTML_URL}">${REPO_HTML_URL}</a>.</p>
           HTML
 
       - uses: actions/upload-pages-artifact@v3

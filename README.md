@@ -1,4 +1,4 @@
-# opcn — reproducible OpenCPN Android build
+# OpenCPN-Android-Unofficial — reproducible OpenCPN Android build
 
 Scripts that build an OpenCPN APK (armeabi-v7a + arm64-v8a) from source, with
 every upstream version pinned.
@@ -6,6 +6,48 @@ every upstream version pinned.
 OpenCPN's official Android app is distributed only through Google Play, as a
 paid app. There is no APK download. This repository builds one from the public
 sources instead.
+
+**Unofficial and unaffiliated.** Not produced, reviewed or endorsed by the
+OpenCPN project. Please do not report problems with these builds to them.
+
+## Repository
+
+Everything below is public information. Nothing secret lives in this repository:
+no keystore, no password, no APK.
+
+| | |
+|---|---|
+| Repository | <https://github.com/ulyssehc/OpenCPN-Android-Unofficial> |
+| Releases | <https://github.com/ulyssehc/OpenCPN-Android-Unofficial/releases> |
+| F-Droid repo | `https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo` |
+| Package | `org.opencpn.opencpn` |
+| Upstream sources | OpenCPN core, OpenCPN-Android, OCPNAndroidCommon (see [Upstream pieces](#upstream-pieces)) |
+| Licence | GPL, as OpenCPN itself (see [Licensing](#licensing)) |
+
+### Fingerprints
+
+Two different keys are involved, and confusing them is the usual way people get
+this wrong.
+
+**The APK signing key** identifies the app. Android ties updates to it: an APK
+signed with any other key will not install over one signed with this one.
+
+    SHA-256  0998a34afdc8a2ed182876e9f4b9ea079c057db3aea2d4ace8aca53443a7cee1
+
+That value is committed in `expected-signing-cert.sha256` and every release
+build is checked against it. Verify a downloaded APK yourself with:
+
+    apksigner verify --print-certs opencpn-*.apk
+
+**The F-Droid repository key** signs the index, not the app. It is printed in
+the publish workflow's log rather than committed, because it is created on the
+first publish. Pin it when adding the repository — a repo URL added without a
+fingerprint trusts whatever key answers that URL:
+
+    https://ulyssehc.github.io/OpenCPN-Android-Unofficial/repo?fingerprint=<SHA-256>
+
+A certificate fingerprint is a public value in both cases. It identifies a key;
+it cannot sign anything.
 
 ## Who wrote this
 

@@ -4,12 +4,14 @@
 # environment at build time (see .github/workflows/fdroid.yml), because this
 # file is public and a repo signing key is as sensitive as the APK key.
 
-repo_url: https://ulyssehc.github.io/opcn/repo
+# Derived by CI from the repository's own name (see the workflow): a rename
+# moves the Pages URL, and this value is baked into the signed index.
+repo_url: $REPO_URL
 repo_name: OpenCPN (unofficial build)
 repo_description: |-
     Unofficial OpenCPN Android builds, compiled from the public GPL sources.
     Not produced or endorsed by the OpenCPN project. Analytics removed,
-    o-charts support omitted. See https://github.com/ulyssehc/opcn
+    o-charts support omitted. See $REPO_HTML_URL
 
 # Archive is off: this repo serves a handful of current builds, and every
 # APK it serves is ~75 MB of GitHub Pages payload.

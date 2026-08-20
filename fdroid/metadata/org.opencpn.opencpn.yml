@@ -30,7 +30,7 @@ Description: |-
   * Signed with the repository owner's key, so it cannot update a Play
     Store install in place.
 
-  Build scripts: https://github.com/ulyssehc/opcn
+  Build scripts: https://github.com/ulyssehc/OpenCPN-Android-Unofficial
 
 # Google Play Services (maps + location) are still linked in, so the build
 # is not free of proprietary dependencies. Declare it rather than hide it.
