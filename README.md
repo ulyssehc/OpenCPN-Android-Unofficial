@@ -129,8 +129,13 @@ In detail:
   upstream links them. That is why the F-Droid metadata declares the
   `NonFreeDep` anti-feature rather than hiding it.
 
-Nothing else is removed: the four bundled plugins (wmm, chartdldr, grib,
-dashboard) are all present, for both ABIs.
+Nothing else is deliberately removed. The four bundled plugins (wmm, chartdldr,
+grib, dashboard) are built, and their translation catalogs ship, but note that
+they are **not** separate `.so` files inside the APK the way they are in the
+build tree -- so if a plugin turns out to be missing in the app, that is a
+packaging question, not a decision taken here. Please
+[open an issue](https://github.com/ulyssehc/OpenCPN-Android-Unofficial/issues)
+if you hit it.
 
 Beyond that, eight defects in the upstream sources had to be worked around to
 get a build that runs at all — including a canvas-height bug that leaves a black
@@ -151,12 +156,12 @@ What the release APK contains, verified at build time:
 ```
 org.opencpn.opencpn  versionCode 128  versionName 5.14.0
 minSdk 21   targetSdk 36   native-code: arm64-v8a, armeabi-v7a
-release: 75.3 MB, not debuggable, signed + zipaligned, signature pinned
+release: 75.7 MB, not debuggable, signed + zipaligned, signature pinned
 ```
 
-Both `libgorp.so` cores (22.4 MB armv7a / 26.3 MB arm64, stripped), all 8 plugin
-binaries (4 plugins × 2 ABIs), the Qt5 runtime libraries, 475 UI asset entries
-and 7 translation catalogs.
+Both `libgorp.so` cores (22.4 MB armv7a / 26.3 MB arm64, stripped), the Qt5
+runtime libraries (10 per ABI), 610 asset entries, and 35 translation catalogs
+covering 7 languages (the core plus each of the four bundled plugins).
 
 The most likely place this breaks in future: upstream's prebuilt Qt5 bundle
 (`OCPNAndroidCommon`) was last touched in 2023, while the app is from 2026.
