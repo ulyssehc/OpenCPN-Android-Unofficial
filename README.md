@@ -198,7 +198,20 @@ Found while getting the build to pass; all are handled automatically.
    Fixed by mirroring the fullscreen correction. Verified on device: the black
    band is gone. On by default; `OPCN_FIX_STATUSBAR_DOUBLE=0` disables it.
 
-6. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
+6. **Four style icons are published nowhere.** `androidUTIL.cpp` loads
+   `<SharedDataDir>/styles/{chek_full,chek_empty,tabbar_button_left,
+   tabbar_button_right}.png` and injects them into Qt stylesheets as the
+   checkbox indicator and the tab-bar scroll arrows. They exist in NONE of the
+   upstream repositories -- the core's `data/styles/` holds only
+   `qtstylesheet.qss`. Anyone building from public sources gets an empty box
+   where each checkbox and tab arrow should be, and the only trace is four
+   `can't open file` lines in `opencpn.log`.
+
+   Unlike the others this cannot be fixed by pinning or patching, because the
+   assets do not exist. `assets/styles/` therefore holds **our own drawings**;
+   `04-patch-app.sh` installs them into the core tree before packaging.
+
+7. **AGP leaves dead bytes in the APK.** Incremental packaging kept the previous
    run's entry data: after stripping, the rebuilt APK still measured 217 MB
    while containing only 81 MB of live entries. Valid (a zip is read from its
    trailing central directory) but 136 MB of waste. `05-apk.sh` therefore runs
