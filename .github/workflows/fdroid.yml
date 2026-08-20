@@ -1,0 +1,100 @@
+name: Publish F-Droid repo
+
+# Manual by default: publishing costs Pages bandwidth and republishes the
+# index, so it should be a decision rather than a side effect of every push.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag whose APK assets to publish (blank = latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: fdroid-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The distro package matches the runner's Python. Installing
+      # fdroidserver from pip pulls unmaintained deps (clint/args) that fail
+      # to build on current Python.
+      - name: Install fdroidserver
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fdroidserver
+
+      - name: Fetch APKs from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir -p fdroid/repo
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --json tagName -q .tagName)
+          fi
+          echo "Publishing APKs from release $TAG"
+          gh release download "$TAG" --pattern '*.apk' --dir fdroid/repo
+          ls -la fdroid/repo
+
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.FDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "FDROID_KEYSTORE_B64 is not set; see fdroid/README.md" >&2
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/fdroid-keystore.p12"
+
+      - name: Build and sign the index
+        working-directory: fdroid
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/fdroid-keystore.p12
+          KEYSTORE_PASS: ${{ secrets.FDROID_KEYSTORE_PASS }}
+          KEY_PASS: ${{ secrets.FDROID_KEY_PASS }}
+          KEY_ALIAS: ${{ secrets.FDROID_KEY_ALIAS }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: |
+          # config.yml references these by name; expand them into a runtime copy
+          # so no secret is ever written to a tracked file.
+          envsubst < config.yml > config.runtime.yml
+          mv config.runtime.yml config.yml
+          fdroid update --create-metadata --verbose
+          # Publish the fingerprint in the job log: users need it to add the
+          # repo safely, and it is not secret.
+          echo "--- repo fingerprint (SHA-256) ---"
+          keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEY_ALIAS" \
+            -storepass "$KEYSTORE_PASS" 2>/dev/null \
+            | grep -i 'SHA256:' | head -1
+
+      - name: Add a landing page
+        run: |
+          cat > fdroid/repo/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8">
+          <title>OpenCPN (unofficial) F-Droid repo</title>
+          <style>body{font-family:system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5}code{background:#eee;padding:.1rem .3rem}</style>
+          <h1>OpenCPN — unofficial builds</h1>
+          <p>Add this URL as a repository in F-Droid:</p>
+          <p><code>https://ulyssehc.github.io/opcn/repo</code></p>
+          <p>Unofficial builds from the public GPL sources, not endorsed by the
+          OpenCPN project. Analytics removed; o-charts support omitted; signed
+          with a personal key. Build scripts:
+          <a href="https://github.com/ulyssehc/opcn">github.com/ulyssehc/opcn</a>.</p>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: fdroid/repo
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
