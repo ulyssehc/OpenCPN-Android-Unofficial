@@ -92,11 +92,53 @@ old = """            height += statusBarHeight;
 """
 new = """            height += statusBarHeight;
         }
-        else {
-            // dm.heightPixels already excludes the status bar; the format
-            // string below subtracts it again. Add it back so the reported
-            // height is the real content height.
+        else if (android.os.Build.VERSION.SDK_INT < 35) {
+            // Pre-Android-15 only. Here dm.heightPixels EXCLUDES the status
+            // bar and the format string below subtracts it again, so the
+            // canvas ends up one status bar short and the window background
+            // shows as a black band above the navigation buttons.
+            //
+            // From SDK 35 the window is edge-to-edge and dm.heightPixels
+            // already INCLUDES the status bar -- upstream compensates for
+            // that a few lines above with
+            //     if (SDK_INT >= 35) actionBarHeight += getNavBarHeight();
+            // Adding it back there overshoots by one status bar and the
+            // canvas overflows the screen (verified on Android 17).
             height += statusBarHeight;
+        }
+        else {
+            // SDK 35+ (edge-to-edge). Do NOT compute this from inset
+            // resources. On this path statusBarHeight is the legacy
+            // status_bar_height dimen, which a display cutout makes wrong,
+            // and actionBarHeight already carries getNavBarHeight(), added a
+            // few lines above. Two corrections derived from those numbers
+            // were built and both missed on Android 17 (one canvas too tall,
+            // one too short).
+            //
+            // Measure instead. setupEdgeToEdge() pads android.R.id.content
+            // with the real system-bar insets, so its height minus its own
+            // padding IS the area available to the Qt surface, whatever the
+            // cutout, the action bar or the navigation mode turn out to be.
+            // The format string below sends (height - statusBarHeight) and
+            // the native side subtracts actionBarHeight, so sending
+            // avail + statusBarHeight + actionBarHeight makes the canvas
+            // come out exactly equal to the measured area.
+            //
+            // Measured, not derived from gFrame: androidForceFullRepaint()
+            // resizes the frame by -1 px before re-querying, so reading back
+            // a view Qt resizes would ratchet the canvas smaller on every
+            // repaint. android.R.id.content is sized by the decor, not by Qt.
+            //
+            // Before the first layout pass getHeight() is 0 and this leaves
+            // `height` untouched; OpenCPN re-queries through
+            // androidConfirmSizeCorrection() once laid out.
+            View cv = findViewById(android.R.id.content);
+            if (cv != null) {
+                int avail = cv.getHeight() - cv.getPaddingTop() - cv.getPaddingBottom();
+                if (avail > 0) {
+                    height = avail + statusBarHeight + actionBarHeight;
+                }
+            }
         }
 """
 if old not in s:
@@ -104,7 +146,7 @@ if old not in s:
 s = s.replace(old, new, 1)
 open(p, "w").write(s)
 PYEOF
-  grep -q "already excludes the status bar" "$Q" \
+  grep -q "SDK_INT < 35" "$Q" \
     && echo ">>> Applied status-bar double-subtraction fix" \
     || { echo "FATAL: status-bar fix not applied"; exit 1; }
 fi
@@ -125,3 +167,104 @@ fi
 
 echo ">>> Patched $G"
 grep -n 'def Qt_Base\|def OCPN_Base' "$G" | sed 's/^/    /'
+
+# 10. OPT-IN diagnostic (OPCN_GEOM_DIAG=1, OFF by default). Dumps the real
+#     view geometry to an on-screen dialog with a Copy button, because the
+#     OpenCPN log file is not reachable on Android 15+ scoped storage and the
+#     display-geometry defect (#8 above) cannot be settled by arithmetic on
+#     the values upstream already exposes. Never enabled for a release build;
+#     06-release.sh refuses a tree that still contains the marker.
+if [ "${OPCN_GEOM_DIAG:-0}" = "1" ] && [ -f "$Q" ]; then
+  python3 - "$Q" <<'PYEOF'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+
+anchor = "    public String getDeviceInfo() {"
+if anchor not in s:
+    sys.exit("FATAL: getDeviceInfo anchor not found")
+
+methods = '''    // ---- OPCN_GEOM_DIAG ----
+    private boolean m_opcnGeomShown = false;
+
+    private void opcnDumpTree(View v, int depth, StringBuilder sb) {
+        if (v == null || depth > 4) return;
+        for (int i = 0; i < depth; i++) sb.append("  ");
+        sb.append(v.getClass().getSimpleName())
+          .append(" id=").append(Integer.toHexString(v.getId()))
+          .append(" top=").append(v.getTop())
+          .append(" h=").append(v.getHeight())
+          .append(" padT=").append(v.getPaddingTop())
+          .append(" padB=").append(v.getPaddingBottom())
+          .append("\\n");
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++)
+                opcnDumpTree(g.getChildAt(i), depth + 1, sb);
+        }
+    }
+
+    private void opcnShowGeom() {
+        StringBuilder sb = new StringBuilder();
+        DisplayMetrics dm = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(dm);
+        int sbh = 0;
+        int rid = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (rid > 0) sbh = getResources().getDimensionPixelSize(rid);
+        androidx.appcompat.app.ActionBar ab = getSupportActionBar();
+        sb.append("sdk=").append(Build.VERSION.SDK_INT)
+          .append(" dm=").append(dm.widthPixels).append("x").append(dm.heightPixels)
+          .append(" dens=").append(dm.density).append("\\n")
+          .append("statusBar=").append(sbh)
+          .append(" navBar=").append(getNavBarHeight())
+          .append(" actionBarRaw=").append(ab == null ? -1 : ab.getHeight())
+          .append(" showing=").append(ab != null && ab.isShowing()).append("\\n")
+          .append("insets=").append(m_insets == null ? "null"
+                : (m_insets.left + "," + m_insets.top + "," + m_insets.right + "," + m_insets.bottom))
+          .append("\\n").append("sent=").append(getDisplayMetrics()).append("\\n\\n");
+        opcnDumpTree(getWindow().getDecorView(), 0, sb);
+        final String text = sb.toString();
+        Log.i("OpenCPN", "GEOM\\n" + text);
+        new AlertDialog.Builder(this)
+            .setTitle("OPCN geometry")
+            .setMessage(text)
+            .setPositiveButton("Copy", (d, w) -> {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                        getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("geom", text));
+            })
+            .setNegativeButton("Close", null)
+            .show();
+    }
+    // ---- end OPCN_GEOM_DIAG ----
+
+'''
+s = s.replace(anchor, methods + anchor, 1)
+
+trig_anchor = '''        //Log.i("DEBUGGER_TAG", ret);
+
+
+        return ret;
+    }
+'''
+trig = '''        //Log.i("DEBUGGER_TAG", ret);
+
+        if (!m_opcnGeomShown && findViewById(android.R.id.content) != null
+                && findViewById(android.R.id.content).getHeight() > 0) {
+            m_opcnGeomShown = true;
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                    .postDelayed(this::opcnShowGeom, 10000);
+        }
+
+        return ret;
+    }
+'''
+if trig_anchor not in s:
+    sys.exit("FATAL: getDisplayMetrics return anchor not found")
+s = s.replace(trig_anchor, trig, 1)
+open(p, "w").write(s)
+PYEOF
+  grep -q "OPCN_GEOM_DIAG" "$Q" \
+    && echo ">>> Applied geometry diagnostic (DIAGNOSTIC BUILD, do not release)" \
+    || { echo "FATAL: geometry diagnostic not applied"; exit 1; }
+fi
