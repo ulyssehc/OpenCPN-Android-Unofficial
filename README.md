@@ -14,7 +14,10 @@ update it like a normal app.
 > [here](https://github.com/ulyssehc/OpenCPN-Android-Unofficial/issues) instead.
 >
 > If you can, **buy the official app on Google Play**: it is the same software
-> and it supports the people who write it.
+> and it supports the people who write it. These builds exist for the devices
+> that cannot — Android without Google Play at all, such as /e/OS,
+> LineageOS, GrapheneOS or another de-Googled ROM, where the Play Store
+> is simply not there to buy it from.
 
 Current build: **OpenCPN 5.14.0** (`versionCode` 128), arm64-v8a + armeabi-v7a,
 Android 5.0+ (minSdk 21).
