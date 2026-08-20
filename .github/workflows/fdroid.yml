@@ -22,6 +22,10 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # deploy-pages requires the job to declare this environment.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,12 +67,16 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.FDROID_KEYSTORE_PASS }}
           KEY_PASS: ${{ secrets.FDROID_KEY_PASS }}
           KEY_ALIAS: ${{ secrets.FDROID_KEY_ALIAS }}
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          # ANDROID_HOME is deliberately not set here: the runner already
+          # exports it, and ${{ env.ANDROID_HOME }} would expand to empty.
         run: |
           # config.yml references these by name; expand them into a runtime copy
           # so no secret is ever written to a tracked file.
+          test -n "$(ls repo/*.apk 2>/dev/null)" \
+            || { echo "No APKs in fdroid/repo -- did the release have assets?" >&2; exit 1; }
           envsubst < config.yml > config.runtime.yml
           mv config.runtime.yml config.yml
+          chmod 600 config.yml   # fdroid warns if the config is world-readable
           fdroid update --create-metadata --verbose
           # Publish the fingerprint in the job log: users need it to add the
           # repo safely, and it is not secret.
