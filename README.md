@@ -21,10 +21,11 @@ authorship:
 - **The agent verified**: that the sources build; that the artifacts are real
   (file types, sizes, ABIs, APK contents, signature, alignment, non-debuggable);
   and that each patch applies and holds.
-- **A human verified**: that the app installs and runs on a real phone
-  (Android 13 / e OS), and that the black band above the navigation buttons is
-  gone. No device or emulator existed in the build environment, so nothing about
-  runtime behaviour could be checked by the agent.
+- **A human verified**: that the app installs and runs on real phones
+  (Android 13 / e OS, and Android 17), and that the canvas fills the screen on
+  both -- no black band above the navigation buttons, nothing clipped at the
+  bottom. No device or emulator existed in the build environment, so nothing
+  about runtime behaviour could be checked by the agent.
 
 
 ## Status
@@ -41,12 +42,15 @@ arm64, stripped), all 8 plugin binaries (4 plugins x 2 ABIs), the Qt5 runtime
 libraries, and 475 UI asset entries.
 
 **Verified on hardware**: the signed release build installs and runs correctly
-on Android 13 (/e/OS), including the display-geometry fix below. No known
+on Android 13 (/e/OS) and Android 17, including the display-geometry fix below,
+which is a different correction on either side of Android 15. No known
 functional defects outstanding.
 
 **This repository contains build scripts only** — no APK and no signing key.
-Both are produced by running the scripts; the keystore is generated on first
-release build and deliberately gitignored.
+Both are produced by running the scripts; the keystore is created on the first
+release build and deliberately gitignored. Its certificate fingerprint is
+committed, in `expected-signing-cert.sha256`, and that is a public value: it
+identifies the key without being able to sign anything.
 
 ## Requirements
 
@@ -89,13 +93,26 @@ For a signed, non-debuggable build:
 
     scripts/06-release.sh
 
-It generates a keystore on first run (at `$OPCN_ROOT/opencpn-release.jks`, with
-the password beside it) or uses `OPCN_KEYSTORE` / `OPCN_KS_PASS` / `OPCN_KS_ALIAS`.
-**Back that keystore up and keep it out of git.** Android ties updates to the
-signing key: build with a different key and the APK will not install as an
-update, only as an uninstall-and-reinstall, losing routes, waypoints and
-settings. The script verifies the signature, the alignment, and that the result
-is genuinely not debuggable, rather than assuming any of the three.
+It reads `$OPCN_ROOT/opencpn-release.jks` (with the password beside it) or
+`OPCN_KEYSTORE` / `OPCN_KS_PASS` / `OPCN_KS_ALIAS`. **Back that keystore up and
+keep it out of git.** Android ties updates to the signing key: build with a
+different key and the APK will not install as an update at all — the device
+rejects it as an invalid package, which is easy to mistake for a corrupted
+download.
+
+Because that failure is silent at build time, two guards sit in the way:
+
+- **A missing keystore is fatal.** Creating the first one requires
+  `OPCN_KS_GENERATE=1`. Generating a key whenever none is found is how a fresh
+  container produces an APK nobody can install — it happened, and cost a build
+  cycle.
+- **The signing certificate is pinned** in `expected-signing-cert.sha256` and
+  compared after signing. `apksigner verify` only proves an APK is internally
+  consistent; it says nothing about *which* key signed it, so it passes
+  happily on exactly the build you do not want.
+
+The script also verifies the alignment and that the result is genuinely not
+debuggable, rather than assuming either.
 Configuration and pinned versions live in `scripts/env.sh`.
 
 ## Pinned versions
@@ -182,22 +199,44 @@ Found while getting the build to pass; all are handled automatically.
    fails resource linking, and no release APK can be produced. Fixed by adding
    the Material Components dependency the app module already uses.
 
-5. **The status bar height is subtracted twice, leaving a black band above
-   the navigation buttons.** `getDisplayMetrics` sends `height -
-   statusBarHeight`, but outside fullscreen `height` is `dm.heightPixels`,
-   which already excludes the status bar. The `m_fullScreen` branch adds it
-   back before the same subtraction; the normal path does not. Native then
-   sizes the canvas as `(height - statusBar) - actionBar`, so it comes out one
-   status bar short and the window background shows through.
+5. **The canvas is the wrong height, and it is wrong differently on either
+   side of Android 15.** These are two distinct defects that look identical on
+   screen -- a black band above the navigation buttons -- which is why the fix
+   is gated by SDK level rather than applied uniformly.
 
-   Compounding it, `setupEdgeToEdge()` runs on EVERY Android version while the
-   matching compensation (`actionBarHeight += getNavBarHeight()`) is gated to
+   The chain is the same in both cases: `getDisplayMetrics` sends
+   `height - statusBarHeight`, the native side subtracts `actionBarHeight`, and
+   what is left becomes the canvas.
+
+   **Below SDK 35, the status bar is subtracted twice.** Outside fullscreen
+   `height` is `dm.heightPixels`, which already excludes the status bar, and
+   the format string subtracts it again. The `m_fullScreen` branch adds it back
+   before the same subtraction; the normal path does not. Compounding it,
+   `setupEdgeToEdge()` runs on EVERY Android version while the compensation
+   written for it (`actionBarHeight += getNavBarHeight()`) is gated to
    `SDK >= 35` -- so Android 13 gets edge-to-edge layout without the
-   correction written for it.
+   correction. Fixed by mirroring the fullscreen correction. **Confirmed by a
+   controlled A/B test on one core**: with the patch the band is gone, with
+   `OPCN_FIX_STATUSBAR_DOUBLE=0` it returns.
 
-   Fixed by mirroring the fullscreen correction. **Confirmed by a controlled
-   A/B test on one core**: with the patch the band is gone, with
-   `OPCN_FIX_STATUSBAR_DOUBLE=0` it returns. On by default.
+   **From SDK 35, the arithmetic uses the wrong quantities.** The window is
+   edge-to-edge, so `dm.heightPixels` now INCLUDES the status bar and the
+   pre-35 correction overshoots. Worse, the two values the chain subtracts do
+   not describe the space actually taken: `statusBarHeight` is the legacy
+   `status_bar_height` dimen, which a display cutout makes smaller than the
+   real top inset, and `actionBarHeight` already carries `getNavBarHeight()`.
+   Two corrections derived from those numbers were built and tested on
+   Android 17 -- one left the canvas too tall and clipped the SOG/COG bar, the
+   other too short and reopened the black band. **The fix stops computing and
+   measures**: `setupEdgeToEdge()` pads `android.R.id.content` with the real
+   insets, so that view's height minus its own padding IS the area available to
+   the Qt surface, whatever the cutout, action bar or navigation mode turn out
+   to be. Sending that plus the two quantities the chain subtracts makes the
+   canvas come out equal to it. The content view is read rather than a
+   Qt-owned one because `androidForceFullRepaint()` resizes the frame by 1 px
+   before re-querying, which would ratchet the canvas smaller on every repaint.
+
+   Both on by default; the pre-35 branch is untouched by the SDK 35+ work.
 
 6. **Four style icons are published nowhere.** `androidUTIL.cpp` loads
    `<SharedDataDir>/styles/{chek_full,chek_empty,tabbar_button_left,
@@ -239,11 +278,12 @@ Four of the six defects below are not specific to this build setup -- they are
 in the upstream sources and affect anyone building or, in one case, running the
 official app:
 
-- **Defect 5 (status bar subtracted twice)** most likely affects the **Google
-  Play build too**, on any pre-Android-15 device. The code path is identical
-  and nothing in this pipeline introduced it: `setupEdgeToEdge()` runs on every
-  Android version, while the compensation written for it is gated to
-  `SDK >= 35`.
+- **Defect 5 (canvas height)** most likely affects the **Google Play build
+  too**, on both sides of Android 15. The code path is identical and nothing in
+  this pipeline introduced it: `setupEdgeToEdge()` runs on every Android
+  version while the compensation written for it is gated to `SDK >= 35`, and
+  above 35 the compensation is built from the legacy `status_bar_height` dimen,
+  which is not the inset the window is actually padded by.
 - **Defect 1 (arm64 `CMAKE_AR`)** makes arm64 unbuildable with any NDK from
   r23 onward. Upstream CI builds armhf only, so nothing exercises it.
 - **Defect 4 (`materialfilemanager`)** makes `assembleRelease` fail outright,
